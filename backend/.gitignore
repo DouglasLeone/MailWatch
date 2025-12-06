@@ -1,0 +1,14 @@
+# Diretórios de Dependências e Build
+/node_modules
+/dist
+/generated 
+
+# Configurações de Ambiente
+.env
+.env.*
+
+# Logs e Cache
+npm-debug.log*
+yarn-error.log*
+.DS_Store # (Para usuários macOS)
+node_modules

@@ -1,0 +1,28 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Email {
+  id          String    @id @default(uuid()) // Identificador único do registro
+  remetente   String // Quem enviou o e-mail (colaborador)
+  destinatario String // Quem recebeu o e-mail (cliente)
+  assunto     String
+  corpoMensagem String // O conteúdo (body-plain) do e-mail
+  dataEnvio   DateTime // Data e hora em que o e-mail foi enviado
+  
+  // Campos de Classificação - Requisito do Hackaton (Tela 2)
+  estado      String? // Estado (UF) preenchido pelo colaborador
+  municipio   String? // Município preenchido pelo colaborador
+
+  // Campo de Status - Requisito de Gestão (Dashboard)
+  status      String    @default("PENDENTE") // PODE SER: "PENDENTE" ou "CLASSIFICADO"
+
+  // Campos de Auditoria (Boas Práticas de Código)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
