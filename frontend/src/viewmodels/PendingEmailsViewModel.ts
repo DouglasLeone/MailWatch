@@ -1,10 +1,14 @@
 import type { Email } from "@/types/email";
-import * as emailService from "@/services/emailService";
+import * as emailService from "@/services/emailRepository";
 import { BaseViewModel } from "./BaseViewModel";
 
 export class PendingEmailsViewModel extends BaseViewModel {
   private emails: Email[] = [];
   private localUpdates: Record<string, { estado: string; municipio: string }> = {};
+  private searchTerm: string = '';
+  private dateFilter: string = '';
+  private estadoFilter: string = '';
+  private municipioFilter: string = '';
 
   getEmails() {
     return this.emails;
@@ -12,6 +16,60 @@ export class PendingEmailsViewModel extends BaseViewModel {
 
   getLocalUpdates() {
     return this.localUpdates;
+  }
+
+  getSearchTerm() {
+    return this.searchTerm;
+  }
+
+  getDateFilter() {
+    return this.dateFilter;
+  }
+
+  getEstadoFilter() { return this.estadoFilter; }
+  getMunicipioFilter() { return this.municipioFilter; }
+
+  setSearchTerm(term: string) {
+    this.searchTerm = term;
+    this.notifyObservers();
+  }
+
+  setDateFilter(date: string) {
+    this.dateFilter = date;
+    this.notifyObservers();
+  }
+
+  setEstadoFilter(estado: string) { this.estadoFilter = estado; this.notifyObservers(); }
+  setMunicipioFilter(municipio: string) { this.municipioFilter = municipio; this.notifyObservers(); }
+
+  // Returns merged & filtered list ready for the View
+  getFilteredEmails(): Email[] {
+    const merged = this.emails.map(email => {
+      const local = this.localUpdates[email.id];
+      if (local) {
+        return { ...email, estado: local.estado || email.estado || '', municipio: local.municipio || email.municipio || '' } as Email;
+      }
+      return email;
+    });
+
+    const term = this.searchTerm.toLowerCase();
+    const estadoFilter = (this.estadoFilter || '').toLowerCase();
+    const municipioFilter = (this.municipioFilter || '').toLowerCase();
+
+    return merged.filter(email => {
+      const matchesSearch =
+        email.remetente.toLowerCase().includes(term) ||
+        email.destinatario.toLowerCase().includes(term);
+      const matchesDate = !this.dateFilter || email.data === this.dateFilter;
+
+      const emailEstado = (email.estado || '').toLowerCase();
+      const emailMunicipio = (email.municipio || '').toLowerCase();
+
+      const matchesEstado = !estadoFilter || (emailEstado && emailEstado === estadoFilter);
+      const matchesMunicipio = !municipioFilter || (emailMunicipio && emailMunicipio === municipioFilter);
+
+      return matchesSearch && matchesDate && matchesEstado && matchesMunicipio;
+    });
   }
 
   getPendingCount() {
@@ -73,6 +131,21 @@ export class PendingEmailsViewModel extends BaseViewModel {
       return true;
     } catch {
       this.setError("Erro ao salvar classificações");
+      return false;
+    } finally {
+      this.setLoading(false);
+    }
+  }
+
+  async deleteEmail(id: string): Promise<boolean> {
+    if (!id) return false;
+    this.setLoading(true);
+    try {
+      await emailService.deleteEmail(id);
+      await this.fetchPendingEmails();
+      return true;
+    } catch (err) {
+      this.setError('Erro ao deletar e-mail');
       return false;
     } finally {
       this.setLoading(false);

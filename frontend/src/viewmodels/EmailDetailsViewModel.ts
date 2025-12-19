@@ -1,6 +1,6 @@
 // EmailDetailsViewModel - Gerencia detalhes de um e-mail específico
 import type { Email } from '@/types/email';
-import * as emailService from '@/services/emailService';
+import * as emailService from '@/services/emailRepository';
 import { BaseViewModel } from './BaseViewModel';
 
 export class EmailDetailsViewModel extends BaseViewModel {

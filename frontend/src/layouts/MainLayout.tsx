@@ -39,7 +39,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background overflow-x-hidden">
       {/* Sidebar Desktop */}
       <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
         {/* Logo */}
@@ -190,8 +190,10 @@ export function MainLayout({ children }: MainLayoutProps) {
 
       {/* Main Content */}
       <main className="min-h-screen pt-16 lg:ml-64 lg:pt-16">
-        <div className="p-4 md:p-6 lg:p-8">
-          {children}
+        <div className="p-4 md:p-6 lg:p-8 max-w-full overflow-x-hidden">
+          <div className="w-full min-w-0">
+            {children}
+          </div>
         </div>
       </main>
     </div>

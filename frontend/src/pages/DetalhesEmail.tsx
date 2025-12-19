@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
-import * as emailService from '@/services/emailService';
+import { useEmailDetails } from '@/hooks/useEmails';
 import * as locationService from '@/services/locationService';
 import { 
   ArrowLeft, 
@@ -14,6 +14,7 @@ import {
   FileText,
   CheckCircle2,
   Clock,
+  Download,
   Info
 } from 'lucide-react';
 
@@ -58,18 +59,6 @@ interface SelectContextType {
     open: boolean;
     disabled?: boolean;
 }
-
-// =================================================================
-// 1. LISTA DE ESTADOS E MUNICÍPIOS (carregados do IBGE quando necessário)
-// =================================================================
-const estados: Estado[] = [
-  { sigla: 'SP', nome: 'São Paulo' },
-  { sigla: 'RJ', nome: 'Rio de Janeiro' },
-  { sigla: 'MG', nome: 'Minas Gerais' },
-  { sigla: 'BA', nome: 'Bahia' },
-  { sigla: 'PR', nome: 'Paraná' },
-  { sigla: 'SC', nome: 'Santa Catarina' },
-];
 
 // =================================================================
 // 2. MOCKS DE COMPONENTES UI
@@ -287,140 +276,7 @@ interface EmailDetailsHookResult {
   };
 }
 
-const useEmailDetails = (id: string): EmailDetailsHookResult => {
-  const [email, setEmail] = useState<Email | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isEditing, setIsEditing] = useState<boolean>(false);
-  const [isSaving, setIsSaving] = useState<boolean>(false);
-  const [editingEstado, setEditingEstado] = useState<string | null>(null);
-  const [editingMunicipio, setEditingMunicipio] = useState<string | null>(null);
-  const [municipiosList, setMunicipiosList] = useState<Municipio[]>([]);
-  const [estadosList, setEstadosList] = useState<Estado[]>([]);
-
-  useEffect(() => {
-    let mounted = true;
-    const fetchData = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const fetched = await emailService.fetchEmail(id);
-        if (!mounted) return;
-        setEmail(fetched);
-        setEditingEstado(fetched.estado);
-        setEditingMunicipio(fetched.municipio);
-      } catch (e) {
-        console.error('Erro ao buscar e-mail:', e);
-        setError('Erro ao carregar detalhes do e-mail.');
-      } finally {
-        if (mounted) setIsLoading(false);
-      }
-    };
-
-    if (id) fetchData();
-    else {
-      setError('ID do e-mail não fornecido.');
-      setIsLoading(false);
-    }
-
-    return () => { mounted = false; };
-  }, [id]);
-
-  // Carrega lista de estados ao montar
-  useEffect(() => {
-    let mounted = true;
-    const loadEstados = async () => {
-      try {
-        const list = await locationService.fetchEstados();
-        if (mounted) setEstadosList(list);
-      } catch (e) {
-        console.error('Erro ao carregar estados:', e);
-        if (mounted) setEstadosList([]);
-      }
-    };
-    loadEstados();
-    return () => { mounted = false; };
-  }, []);
-
-  // Carrega municípios quando o estado de edição mudar
-  useEffect(() => {
-    let mounted = true;
-    const loadMunicipios = async () => {
-      if (!editingEstado) {
-        setMunicipiosList([]);
-        return;
-      }
-      try {
-        const list = await locationService.fetchMunicipiosPorEstado(editingEstado);
-        if (mounted) setMunicipiosList(list);
-      } catch (e) {
-        console.error('Erro ao carregar municípios:', e);
-        if (mounted) setMunicipiosList([]);
-      }
-    };
-    loadMunicipios();
-    return () => { mounted = false; };
-  }, [editingEstado]);
-
-  const viewModel = useMemo(() => ({
-    startEditing: () => {
-      if (email) {
-        setIsEditing(true);
-        setEditingEstado(email.estado);
-        setEditingMunicipio(email.municipio);
-      }
-    },
-    cancelEditing: () => {
-      setIsEditing(false);
-      if (email) {
-        setEditingEstado(email.estado);
-        setEditingMunicipio(email.municipio);
-      }
-    },
-    setEditingEstado: (value: string) => {
-      setEditingEstado(value);
-      setEditingMunicipio(null);
-    },
-    setEditingMunicipio: (value: string) => {
-      setEditingMunicipio(value);
-    },
-    saveLocation: async (emailId: string) => {
-      if (!editingEstado) {
-        console.error('Estado é obrigatório para salvar a localização.');
-        return false;
-      }
-      setIsSaving(true);
-      try {
-        const updated = await emailService.classificarEmail(emailId, {
-          estado: editingEstado || undefined,
-          municipio: editingMunicipio || undefined,
-        });
-
-        setEmail(prev => prev ? ({ ...prev, ...updated }) : updated);
-        setIsEditing(false);
-        setIsSaving(false);
-        return true;
-      } catch (e) {
-        console.error('Falha ao salvar localização:', e);
-        setIsSaving(false);
-        return false;
-      }
-    }
-  }), [email, editingEstado, editingMunicipio]);
-
-  return {
-    email,
-    isLoading,
-    error,
-    isEditing,
-    isSaving,
-    editingEstado,
-    editingMunicipio,
-    viewModel,
-    municipios: municipiosList,
-    estados: estadosList,
-  } as EmailDetailsHookResult;
-};
+// Use the shared EmailDetails ViewModel hook from `useEmails`.
 
 // =================================================================
 // 4. COMPONENTE PRINCIPAL (DetalhesEmail.tsx)
@@ -526,6 +382,28 @@ export default function DetalhesEmail() {
     viewModel.setEditingMunicipio(value);
   };
 
+  const handleExportEmail = () => {
+    if (!email) return;
+    const headers = ['Remetente','Destinatário','Assunto','Data','Hora','Estado','Município','Corpo'].join(';');
+    const row = [
+      email.remetente,
+      email.destinatario,
+      email.assunto,
+      email.data,
+      email.hora,
+      email.estado || '',
+      email.municipio || '',
+      (email.corpo || '').toString().replace(/\n/g, '\\n')
+    ].map(v => '"' + String(v).replace(/"/g, '""') + '"').join(';');
+
+    const csv = [headers, row].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `email_${email.id}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
   // Retornos Condicionais (ocorrem DEPOIS das chamadas de Hooks)
   if (isLoading) {
     return (
@@ -560,54 +438,65 @@ export default function DetalhesEmail() {
 
   return (
     <MainLayout>
-      <div className="mb-6 flex items-center gap-4">
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          onClick={() => navigate(-1)}
-          className="h-10 w-10 rounded-xl hover:bg-gray-200"
-        >
-          <ArrowLeft className="h-5 w-5 text-gray-700" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">
-            Detalhes do E-mail
-          </h1>
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center gap-4 w-full">
+        <div className="flex items-center gap-4 w-full sm:w-auto min-w-0">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => navigate(-1)}
+            className="h-10 w-10 rounded-xl hover:bg-gray-200"
+          >
+            <ArrowLeft className="h-5 w-5 text-gray-700" />
+          </Button>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">
+              Detalhes do E-mail
+            </h1>
+          </div>
         </div>
-        
-        <div className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${
-          email.classificado 
-            ? 'bg-green-100 text-green-700' 
-            : 'bg-yellow-100 text-yellow-700'
-        } shadow-md`}>
-          {email.classificado ? (
-            <>
-              <CheckCircle2 className="h-4 w-4" />
-              Classificado
-            </>
-          ) : (
-            <>
-              <Clock className="h-4 w-4" />
-              Pendente
-            </>
-          )}
+
+        <div className="ml-auto flex items-center gap-3 flex-shrink-0">
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <Button variant="outline" onClick={handleExportEmail} className="h-10">
+              <Download className="mr-2 h-4 w-4" />
+              Exportar
+            </Button>
+
+            <div className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium truncate ${
+              email.classificado 
+                ? 'bg-green-100 text-green-700' 
+                : 'bg-yellow-100 text-yellow-700'
+            } shadow-md flex-shrink-0`}>
+              {email.classificado ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span className="whitespace-nowrap">Classificado</span>
+                </>
+              ) : (
+                <>
+                  <Clock className="h-4 w-4" />
+                  <span className="whitespace-nowrap">Pendente</span>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-3">
+      <div className="grid gap-8 lg:grid-cols-3 w-full">
         {/* Conteúdo Principal */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-6 min-w-0">
           <Card className="border-gray-200 shadow-xl overflow-hidden">
             <CardContent className="p-0">
               {/* Seção de Cabeçalho */}
               <div className="border-b border-gray-200 bg-gray-50/50 p-6">
                 <h2 className="text-2xl font-bold text-gray-900 mb-4">{email.assunto}</h2>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="flex items-center gap-3 p-3 bg-white rounded-xl shadow-sm">
+                  <div className="flex items-center gap-3 p-3 bg-white rounded-xl shadow-sm min-w-0">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100">
                       <User className="h-5 w-5 text-blue-600" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-gray-500 uppercase tracking-wider">Remetente</p>
                       <p className="text-sm font-semibold text-gray-800 truncate">{email.remetente}</p>
                     </div>
@@ -616,7 +505,7 @@ export default function DetalhesEmail() {
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-100">
                       <Mail className="h-5 w-5 text-indigo-600" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-gray-500 uppercase tracking-wider">Destinatário</p>
                       <p className="text-sm font-semibold text-gray-800 truncate">{email.destinatario}</p>
                     </div>
@@ -655,8 +544,8 @@ export default function DetalhesEmail() {
         </div>
 
         {/* Barra Lateral */}
-        <div className="lg:col-span-1 space-y-6">
-          <Card className="border-gray-200 shadow-xl sticky top-8">
+        <div className="lg:col-span-1 space-y-6 min-w-0">
+          <Card className="border-gray-200 shadow-xl lg:sticky lg:top-8">
             <CardContent className="p-6">
               <div className="flex items-center gap-3 mb-6 border-b pb-4">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-red-100">
@@ -668,7 +557,7 @@ export default function DetalhesEmail() {
                 </div>
               </div>
 
-              {isEditing ? (
+                {isEditing ? (
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 block">
@@ -704,7 +593,7 @@ export default function DetalhesEmail() {
                       <SelectTrigger placeholder={editingEstado ? "Selecione o Município" : "Selecione um Estado primeiro"}>
                         <SelectValue placeholder={editingEstado ? "Selecione o Município" : "Selecione um Estado primeiro"} />
                       </SelectTrigger>
-                      <SelectContent>
+                        <SelectContent>
                         {municipios.length === 0 ? (
                             <div className="p-2 text-sm text-gray-500 flex items-center gap-2">
                                 <Info className="h-4 w-4" />

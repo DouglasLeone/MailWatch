@@ -1,6 +1,6 @@
 // DashboardViewModel - Gerencia dados do dashboard (MVVM)
 import type { DashboardData } from '@/types/email';
-import * as emailService from '@/services/emailService';
+import * as emailService from '@/services/emailRepository';
 import { BaseViewModel } from './BaseViewModel';
 
 export class DashboardViewModel extends BaseViewModel {
@@ -20,8 +20,62 @@ export class DashboardViewModel extends BaseViewModel {
     this.setError(null);
 
     try {
-      const result = await emailService.getDashboardData();
-      this.data = result;
+      // The repository no longer provides aggregated dashboard data; compute
+      // aggregates locally using the repository's fetchHistorico for full
+      // control and to keep presentation logic in the ViewModel.
+      const emails = await emailService.fetchHistorico();
+
+      const total = emails.length;
+      const classificados = emails.filter(e => e.classificado || (e.estado && e.municipio)).length;
+      const pendentes = total - classificados;
+
+      const emailsPorEstado: Record<string, number> = {};
+      emails.forEach(email => {
+        if (!email.estado) return;
+        emailsPorEstado[email.estado] = (emailsPorEstado[email.estado] || 0) + 1;
+      });
+
+      // Tendência últimos 7 dias
+      const tendenciaMap: Record<string, number> = {};
+      for (let i = 0; i < 7; i++) {
+        const dt = new Date();
+        dt.setDate(dt.getDate() - i);
+        const key = dt.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+        tendenciaMap[key] = 0;
+      }
+
+      const parseIsoDateToLocal = (dateStr?: string | null) => {
+        if (!dateStr) return null;
+        const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (m) return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+        const d = new Date(String(dateStr));
+        if (isNaN(d.getTime())) return null;
+        return d;
+      };
+
+      emails.forEach(email => {
+        const parsed = parseIsoDateToLocal(email.data) || (email.data ? new Date(String(email.data)) : null);
+        if (!parsed) return;
+        const dateStr = parsed.toLocaleDateString('pt-BR', { month: 'short', day: '2-digit' });
+        if (dateStr in tendenciaMap) tendenciaMap[dateStr]++;
+      });
+
+      const tendencia = Object.keys(tendenciaMap).map(k => ({ dia: k, quantidade: tendenciaMap[k] }));
+
+      const destMap: Record<string, number> = {};
+      for (const e of emails) destMap[e.destinatario] = (destMap[e.destinatario] || 0) + 1;
+
+      const topDestinatarios = Object.entries(destMap)
+        .map(([destinatario, quantidade]) => ({ destinatario, quantidade }))
+        .sort((a, b) => b.quantidade - a.quantidade)
+        .slice(0, 5);
+
+      this.data = {
+        stats: { total, classificados, pendentes },
+        emailsPorEstado: Object.entries(emailsPorEstado).map(([estado, quantidade]) => ({ estado, quantidade })).sort((a, b) => b.quantidade - a.quantidade),
+        tendencia,
+        topDestinatarios
+      };
       this.notifyObservers();
     } catch (error) {
       console.error('[DashboardViewModel] Erro ao buscar dashboard:', error);
@@ -76,7 +130,17 @@ export class DashboardViewModel extends BaseViewModel {
     return () => this.dashboardObservers.delete(observer);
   }
 
-  private notifyObservers(): void {
+  // Mantém a visibilidade protegida como na BaseViewModel e notifica ambos os conjuntos
+  protected notifyObservers(): void {
+    // Notifica observadores do BaseViewModel
+    // chama implementação base para observers registrados via BaseViewModel
+    try {
+      super.notifyObservers();
+    } catch (e) {
+      // Caso a implementação base não exista por algum motivo, ignoramos
+    }
+
+    // Notifica observadores específicos do dashboard
     this.dashboardObservers.forEach((observer) => observer());
   }
 }
