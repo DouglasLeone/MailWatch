@@ -1,6 +1,7 @@
 // LoginViewModel - ViewModel específico para a tela de login
 import { FormViewModel, FormState } from './FormViewModel';
 import * as authService from '@/services/authService';
+import { authViewModel } from './AuthViewModel';
 
 interface LoginFormData extends FormState {
   email: string;
@@ -55,8 +56,9 @@ export class LoginViewModel extends FormViewModel<LoginFormData> {
 
     this.setSubmitting(true);
     try {
-      const user = await authService.login(this.formData.email, this.formData.password);
-      if (!user) {
+      // Use AuthViewModel to ensure global auth state is updated
+      const success = await authViewModel.login(this.formData.email, this.formData.password);
+      if (!success) {
         this.setError('Credenciais inválidas');
         return false;
       }

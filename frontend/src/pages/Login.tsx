@@ -203,21 +203,6 @@ export default function Login() {
             </Button>
           </form>
 
-          {/* Hint */}
-          <div className="mt-8 rounded-xl border border-border/50 bg-muted/30 p-4">
-            <div className="flex items-start gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                <Sparkles className="h-4 w-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-foreground mb-1">Modo demonstração</p>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Use qualquer e-mail válido e senha <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-primary font-medium">123456</code>
-                </p>
-              </div>
-            </div>
-          </div>
-
           {/* Footer */}
           <p className="mt-8 text-center text-xs text-muted-foreground">
             © 2025 MailWatch. Todos os direitos reservados.

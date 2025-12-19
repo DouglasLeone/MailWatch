@@ -1,7 +1,7 @@
 // CadastroManualViewModel.ts
 import { FormViewModel, FormState } from './FormViewModel';
 import type { Email } from '@/types/email';
-import * as emailService from '@/services/emailService';
+import * as emailService from '@/services/emailRepository';
 
 interface CadastroFormData extends FormState {
   remetente: string;
@@ -81,7 +81,25 @@ export class CadastroManualViewModel extends FormViewModel<CadastroFormData> {
         classificado: !!(this.formData.estado && this.formData.municipio),
       };
 
-      await emailService.criarEmail(newEmail);
+      // Primeiro cria o e-mail; alguns backends não aplicam a classificação
+      // diretamente no endpoint de criação, então, se o e-mail deveria
+      // ser classificado (estado + municipio presentes), chamamos o
+      // endpoint de classificação após a criação para garantir que o
+      // servidor salve `estado`, `municipio` e marque como `classificado`.
+      const created = await emailService.criarEmail(newEmail);
+
+      if (newEmail.classificado && created && created.id) {
+        try {
+          await emailService.classificarEmail(created.id, {
+            estado: String(newEmail.estado ?? ''),
+            municipio: String(newEmail.municipio ?? ''),
+          });
+        } catch (err) {
+          // Não falhar a criação caso a classificação não seja aceita,
+          // apenas logamos para depuração.
+          console.warn('E-mail criado mas não foi possível classificar automaticamente:', err);
+        }
+      }
       this.clearErrors();
       return true;
     } catch (error) {

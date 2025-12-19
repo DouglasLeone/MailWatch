@@ -13,8 +13,8 @@ import {
   SelectValue 
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import { usePendingEmails } from '@/hooks/useEmails'; 
-import { pendingEmailsViewModel } from '@/viewmodels';
 import type { Email } from '@/types/email'; 
 // Importamos o novo serviço de localização
 import * as locationService from '@/services/locationService';
@@ -61,45 +61,38 @@ export default function Pendentes() {
   // O hook que gerencia os e-mails e as atualizações locais
   const { 
     emails, 
+    filteredEmails,
     isLoading: isEmailsLoading, 
     localUpdates,
     pendingCount,
     error,
-    updateLocalEmail 
+    updateLocalEmail,
+    refetch,
+    setFilter,
+    searchTerm,
+    dateFilter,
+    saveAllClassifications,
+    deleteEmail
   } = usePendingEmails();
+
+  // Global location filters
+  const [globalEstadoFilter, setGlobalEstadoFilter] = useState('');
+  const [globalMunicipioFilter, setGlobalMunicipioFilter] = useState('');
   
   const isLoading = isEmailsLoading || isLocationLoading;
   
-  const [searchTerm, setSearchTerm] = useState('');
-  const [dateFilter, setDateFilter] = useState('');
+  // searchTerm/dateFilter are managed by the ViewModel; reflect them locally
+  const [localSearch, setLocalSearch] = useState(searchTerm);
+  const [localDateFilter, setLocalDateFilter] = useState(dateFilter);
 
-  // 1. PRIMEIRA ETAPA CRÍTICA: Mesclar dados do servidor com atualizações locais
-  const mergedEmails = useMemo(() => {
-    return emails.map(email => {
-      const local = localUpdates[email.id];
-      
-      // Sobrescreve os campos 'estado' e 'municipio' com o valor local, se existir.
-      if (local) {
-        return {
-          ...email,
-          estado: local.estado || email.estado || '', 
-          municipio: local.municipio || email.municipio || '',
-        } as Email; 
-      }
-      return email;
-    });
-  }, [emails, localUpdates]); 
+  // Sync local inputs with ViewModel
+  useEffect(() => setLocalSearch(searchTerm), [searchTerm]);
+  useEffect(() => setLocalDateFilter(dateFilter), [dateFilter]);
 
-  // 2. SEGUNDA ETAPA: Filtrar APENAS A LISTA MESTRADA
-  const filteredEmails = useMemo(() => {
-    return mergedEmails.filter((email) => {
-      const matchesSearch = 
-        email.remetente.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        email.destinatario.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesDate = !dateFilter || email.data === dateFilter;
-      return matchesSearch && matchesDate;
-    });
-  }, [mergedEmails, searchTerm, dateFilter]); 
+  useEffect(() => {
+    // whenever global filters change, apply them to the ViewModel
+    setFilter(localSearch, localDateFilter, globalEstadoFilter, globalMunicipioFilter);
+  }, [globalEstadoFilter, globalMunicipioFilter]);
 
   // Handlers
   const handleEstadoChange = async (emailId: string, estado: string) => {
@@ -140,19 +133,45 @@ export default function Pendentes() {
   };
 
   const handleSaveAll = async () => {
-    const success = await pendingEmailsViewModel.saveAllClassifications();
+    const success = await saveAllClassifications();
     if (success) {
       toast({
         title: 'Salvo com sucesso!',
         description: `${pendingCount} e-mail(s) classificado(s).`,
       });
     } else {
-      const executionError = pendingEmailsViewModel.getError(); 
+      const executionError = undefined; 
       toast({
         title: 'Erro ao salvar',
         description: executionError || 'Tente novamente mais tarde.',
         variant: 'destructive',
       });
+    }
+  };
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [selectedDeleteId, setSelectedDeleteId] = useState<string | null>(null);
+
+  const openDeleteDialog = (id: string) => {
+    setSelectedDeleteId(id);
+    setConfirmOpen(true);
+  };
+
+  const onConfirmDelete = async () => {
+    if (!selectedDeleteId) return;
+    try {
+      const success = await deleteEmail(selectedDeleteId);
+      if (success) {
+        toast({ title: 'Excluído', description: 'E-mail removido com sucesso.' });
+        await refetch();
+      } else {
+        toast({ title: 'Erro', description: 'Falha ao deletar e-mail', variant: 'destructive' });
+      }
+    } catch (err: any) {
+      console.error('Erro ao deletar e-mail', err);
+      toast({ title: 'Erro', description: (err && err.message) ? err.message : 'Falha ao deletar e-mail', variant: 'destructive' });
+    } finally {
+      setSelectedDeleteId(null);
     }
   };
 
@@ -180,8 +199,16 @@ export default function Pendentes() {
     });
   };
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('pt-BR', {
+  const formatDate = (dateStr: string, hora?: string) => {
+    let date: Date;
+    if (hora) {
+      date = new Date(`${dateStr}T${hora}:00`);
+      if (isNaN(date.getTime())) date = new Date(dateStr.replace(/-/g, '/'));
+    } else {
+      date = new Date(dateStr.replace(/-/g, '/'));
+    }
+
+    return date.toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: 'short',
       year: 'numeric'
@@ -239,25 +266,63 @@ export default function Pendentes() {
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Buscar por remetente ou destinatário..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              value={localSearch}
+              onChange={(e) => {
+                const v = e.target.value;
+                setLocalSearch(v);
+                setFilter(v, localDateFilter, globalEstadoFilter, globalMunicipioFilter);
+              }}
               className="pl-10 h-10 bg-muted/50 border-border/50"
             />
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              className="h-10 w-28 rounded-md border bg-muted/50 px-2 text-sm"
+              value={globalEstadoFilter}
+              onChange={(e) => {
+                const v = e.target.value;
+                setGlobalEstadoFilter(v);
+                setGlobalMunicipioFilter('');
+                if (v) {
+                  if (!municipiosCache[v]) {
+                    // prefetch for global filter
+                    locationService.fetchMunicipiosPorEstado(v).then((m) => setMunicipiosCache(prev => ({ ...prev, [v]: m }))).catch(() => {});
+                  }
+                }
+              }}
+            >
+              <option value="">UF</option>
+              {estados.map((e) => <option key={e.sigla} value={e.sigla}>{e.sigla}</option>)}
+            </select>
+
+            <select
+              className="h-10 w-40 rounded-md border bg-muted/50 px-2 text-sm"
+              value={globalMunicipioFilter}
+              onChange={(e) => setGlobalMunicipioFilter(e.target.value)}
+              disabled={!globalEstadoFilter}
+            >
+              <option value="">Município</option>
+              {(municipiosCache[globalEstadoFilter] || []).map(m => <option key={m.nome} value={m.nome}>{m.nome}</option>)}
+            </select>
           </div>
           <div className="relative">
             <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
             <Input
               type="date"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
+              value={localDateFilter}
+              onChange={(e) => {
+                const v = e.target.value;
+                setLocalDateFilter(v);
+                setFilter(localSearch, v);
+              }}
               className="pl-10 h-10 w-full sm:w-44 bg-muted/50 border-border/50"
             />
           </div>
-          {dateFilter && (
+          {localDateFilter && (
             <Button 
               variant="ghost" 
               size="sm"
-              onClick={() => setDateFilter('')}
+              onClick={() => { setLocalDateFilter(''); setFilter(localSearch, '') }}
               className="h-10"
             >
               Limpar
@@ -286,7 +351,7 @@ export default function Pendentes() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border/50">
+            <table className="w-full table-fixed divide-y divide-border/50">
               <thead>
                 <tr className="border-b border-border bg-muted/30">
                   <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -298,11 +363,14 @@ export default function Pendentes() {
                   <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Data
                   </th>
-                  <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground min-w-[120px]">
+                  <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground w-20 sm:w-28">
                     Estado
                   </th>
-                  <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground min-w-[150px]">
+                  <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground w-28 sm:w-40">
                     Município
+                  </th>
+                  <th className="px-4 py-3.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    
                   </th>
                 </tr>
               </thead>
@@ -331,36 +399,38 @@ export default function Pendentes() {
                         <p className="text-sm text-foreground/80 truncate max-w-[180px]">{email.destinatario}</p>
                       </td>
                       <td className="px-4 py-4">
-                        <span className="text-sm text-muted-foreground">{formatDate(email.data)}</span>
+                        <span className="text-sm text-muted-foreground">{formatDate(email.data, email.hora)}</span>
                       </td>
                       <td className="px-4 py-4">
+                        <div className="min-w-0">
                           <Select 
                             value={selectedEstados[email.id] ?? selectedEstado} 
                             onValueChange={(value) => handleEstadoChange(email.id, value)}
-                          // Desabilita o Select de Estado se a lista de estados ainda estiver carregando
-                          disabled={isLocationLoading}
-                        >
-                          <SelectTrigger className="w-28 h-9 bg-muted/50 border-border/50">
-                            <SelectValue placeholder={isLocationLoading ? 'Carregando...' : 'UF'} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {estados.map((estado) => (
-                              <SelectItem key={estado.sigla} value={estado.sigla}>
-                                {estado.sigla}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                            // Desabilita o Select de Estado se a lista de estados ainda estiver carregando
+                            disabled={isLocationLoading}
+                          >
+                            <SelectTrigger className="w-full sm:w-28 h-9 bg-muted/50 border-border/50">
+                              <SelectValue placeholder={isLocationLoading ? 'Carregando...' : 'UF'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {estados.map((estado) => (
+                                <SelectItem key={estado.sigla} value={estado.sigla}>
+                                  {estado.sigla}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </td>
                       <td className="px-4 py-4">
-                        <div className="flex items-center gap-2">
+                        <div className="min-w-0 flex items-center gap-2">
                           <Select 
                             value={selectedMunicipios[email.id] ?? selectedMunicipio}
                             onValueChange={(value) => handleMunicipioChange(email.id, value)}
                             // Desabilita se não houver estado selecionado, se estiver carregando ou se a lista estiver vazia
                             disabled={!effectiveEstado || isLocationLoading || loadingEstados[effectiveEstado] || municipios.length === 0}
                           >
-                            <SelectTrigger className="w-40 h-9 bg-muted/50 border-border/50">
+                            <SelectTrigger className="w-full sm:w-40 h-9 bg-muted/50 border-border/50">
                               <SelectValue placeholder={
                                 !effectiveEstado ? 'Selecione o estado' : 
                                 loadingEstados[effectiveEstado] ? 'Carregando...' : 
@@ -379,6 +449,18 @@ export default function Pendentes() {
                           {isComplete && (
                             <div className="h-2 w-2 rounded-full bg-green-500 shadow-md shadow-green-500/50" />
                           )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-destructive"
+                            onClick={() => openDeleteDialog(email.id)}
+                          >
+                            <AlertCircle className="h-4 w-4" />
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -403,6 +485,15 @@ export default function Pendentes() {
           </div>
         )}
       </Card>
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Excluir e-mail"
+        description="Deseja mesmo excluir este e-mail pendente? Esta ação não pode ser desfeita."
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
+        onConfirm={onConfirmDelete}
+      />
     </MainLayout>
   );
 }

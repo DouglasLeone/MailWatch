@@ -18,6 +18,7 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
+  TooltipProps,
   ResponsiveContainer,
   AreaChart,
   Area
@@ -28,6 +29,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useDashboard } from '@/hooks/useEmails';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -40,17 +42,19 @@ export default function Dashboard() {
     year: 'numeric',
   });
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="rounded-lg border border-border bg-card/95 backdrop-blur-sm px-3 py-2 shadow-lg">
-          <p className="text-xs font-medium text-foreground">{label}</p>
-          <p className="text-sm font-bold text-primary">{payload[0].value}</p>
-        </div>
-      );
-    }
-    return null;
-  };
+  const isMobile = useIsMobile();
+
+  const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="rounded-lg border border-border bg-card/95 backdrop-blur-sm px-3 py-2 shadow-lg">
+        <p className="text-xs font-medium text-foreground">{label}</p>
+        <p className="text-sm font-bold text-primary">{payload[0].value}</p>
+      </div>
+    );
+  }
+  return null;
+};
 
   return (
     <MainLayout>
@@ -60,37 +64,45 @@ export default function Dashboard() {
       />
 
       {/* Stats Cards */}
-      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatsCard
-          title="Total de E-mails"
-          value={isLoading ? '...' : data?.stats.total || 0}
-          icon={<Mail className="h-5 w-5" />}
-          variant="primary"
-          delay={0}
-          subtitle="Registros no sistema"
-        />
-        <StatsCard
-          title="Classificados"
-          value={isLoading ? '...' : data?.stats.classificados || 0}
-          icon={<CheckCircle2 className="h-5 w-5" />}
-          variant="success"
-          delay={100}
-          subtitle="vs. semana passada"
-        />
-        <StatsCard
-          title="Pendentes"
-          value={isLoading ? '...' : data?.stats.pendentes || 0}
-          icon={<Clock className="h-5 w-5" />}
-          variant="warning"
-          delay={200}
-          subtitle="Aguardando classificação"
-        />
+      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div role="button" className="cursor-pointer" onClick={() => navigate('/lista-geral') }>
+          <StatsCard
+            title="Total de E-mails"
+            value={isLoading ? '...' : data?.stats.total || 0}
+            icon={<Mail className="h-5 w-5" />}
+            variant="primary"
+            delay={0}
+            subtitle="Registros no sistema"
+          />
+        </div>
+
+        <div role="button" className="cursor-pointer" onClick={() => navigate('/lista-geral?status=classificados') }>
+          <StatsCard
+            title="Classificados"
+            value={isLoading ? '...' : data?.stats.classificados || 0}
+            icon={<CheckCircle2 className="h-5 w-5" />}
+            variant="success"
+            delay={100}
+            subtitle="E-mails verificados"
+          />
+        </div>
+
+        <div role="button" className="cursor-pointer" onClick={() => navigate('/lista-geral?status=pendentes') }>
+          <StatsCard
+            title="Pendentes"
+            value={isLoading ? '...' : data?.stats.pendentes || 0}
+            icon={<Clock className="h-5 w-5" />}
+            variant="warning"
+            delay={200}
+            subtitle="Aguardando classificação"
+          />
+        </div>
       </div>
 
       {/* Charts Row */}
       <div className="mb-8 grid gap-6 lg:grid-cols-2">
         {/* Bar Chart - E-mails por Estado */}
-        <Card className="border-border/50 shadow-card animate-slide-up overflow-hidden" style={{ animationDelay: '300ms' }}>
+        <Card className="border-border/50 shadow-card animate-slide-up overflow-hidden min-w-0" style={{ animationDelay: '300ms' }}>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-3 text-base font-semibold">
@@ -102,21 +114,24 @@ export default function Dashboard() {
             </div>
           </CardHeader>
           <CardContent className="pt-4">
-            <div className="h-[280px]">
+            <div className="h-48 sm:h-56 md:h-72 lg:h-[280px] w-full min-w-0 overflow-hidden">
               {isLoading ? (
                 <div className="flex h-full items-center justify-center">
                   <div className="h-40 w-full animate-shimmer rounded-lg" />
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data?.emailsPorEstado || []} barSize={32}>
+                  <BarChart data={data?.emailsPorEstado || []} barCategoryGap={isMobile ? 8 : 20}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                    <XAxis 
-                      dataKey="estado" 
-                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} 
-                      axisLine={false}
-                      tickLine={false}
-                    />
+                      <XAxis 
+                        dataKey="estado" 
+                        tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: isMobile ? 10 : 12 }} 
+                        axisLine={false}
+                        tickLine={false}
+                        interval={isMobile ? 0 : 'preserveEnd'}
+                        angle={isMobile ? -30 : 0}
+                        textAnchor={isMobile ? 'end' : 'middle'}
+                      />
                     <YAxis 
                       tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
                       axisLine={false}
@@ -137,7 +152,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Area Chart - Tendência */}
-        <Card className="border-border/50 shadow-card animate-slide-up overflow-hidden" style={{ animationDelay: '400ms' }}>
+        <Card className="border-border/50 shadow-card animate-slide-up overflow-hidden min-w-0" style={{ animationDelay: '400ms' }}>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-3 text-base font-semibold">
@@ -152,7 +167,7 @@ export default function Dashboard() {
             </div>
           </CardHeader>
           <CardContent className="pt-4">
-            <div className="h-[280px]">
+            <div className="h-48 sm:h-56 md:h-72 lg:h-[280px] w-full min-w-0 overflow-hidden">
               {isLoading ? (
                 <div className="flex h-full items-center justify-center">
                   <div className="h-40 w-full animate-shimmer rounded-lg" />
@@ -169,9 +184,12 @@ export default function Dashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                     <XAxis 
                       dataKey="dia" 
-                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: isMobile ? 10 : 12 }}
                       axisLine={false}
                       tickLine={false}
+                      interval={isMobile ? 0 : 'preserveEnd'}
+                      angle={isMobile ? -30 : 0}
+                      textAnchor={isMobile ? 'end' : 'middle'}
                     />
                     <YAxis 
                       tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}

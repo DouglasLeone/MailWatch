@@ -63,7 +63,7 @@ export default function CadastroManual() {
     setIsLocationLoading(true);
     try {
       // procura o objeto de estado para pegar um possível `id`
-      const estadoObj = estados.find((s: any) => s.sigla === estadoSigla);
+      const estadoObj = estados.find((s) => s.sigla === estadoSigla);
       const ufParam = estadoObj && (estadoObj.id || estadoObj.codigo || estadoObj.codigo_ibge) ? (estadoObj.id ?? estadoObj.codigo ?? estadoObj.codigo_ibge) : estadoSigla;
 
       const fetchedMunicipios = await fetchMunicipiosPorEstado(String(ufParam));

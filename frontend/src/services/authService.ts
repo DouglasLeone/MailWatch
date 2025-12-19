@@ -1,12 +1,13 @@
 // Serviço de autenticação (mock)
 import type { User, AuthState } from '@/types/email';
 
-const STORAGE_KEY = 'emailmanager_auth';
+const STORAGE_KEY = import.meta.env.VITE_STORAGE_KEY;
 
 // Usuário mock para testes
 const mockUser: User = {
   id: '1',
-  email: 'admin@emailmanager.com',
+  email: import.meta.env.VITE_EMAIL_USER,
+  password: import.meta.env.VITE_PASSWORD_USER,
   nome: 'Administrador',
 };
 
@@ -17,11 +18,11 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 export async function login(email: string, password: string): Promise<User | null> {
   await delay(800);
   
-  // Credenciais de teste: qualquer email válido + senha "123456"
-  if (email && password === '123456') {
+  if (mockUser.email === email && mockUser.password === password) {
     const user: User = {
       id: '1',
       email: email,
+      password: password,
       nome: email.split('@')[0].charAt(0).toUpperCase() + email.split('@')[0].slice(1),
     };
     
